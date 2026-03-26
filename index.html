@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flappy Postman</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="intro-panel">
+        <p class="eyebrow">Arcade prototype</p>
+        <h1>Flappy Postman</h1>
+        <p class="deck">
+          A side-on endless runner where a rattled postman tears through the
+          street, the world scrolls on its own, and one mistimed jump sends him
+          straight into suburban chaos.
+        </p>
+
+        <div class="feature-list">
+          <article>
+            <h2>One-Button Run</h2>
+            <p>
+              The route auto-scrolls. The only thing you control is the jump, so
+              the timing has to be clean.
+            </p>
+          </article>
+          <article>
+            <h2>Street Obstacles</h2>
+            <p>
+              Dogs, prams, post boxes, cats, holly bushes, bollards, benches,
+              and other pavement hazards keep coming from the right.
+            </p>
+          </article>
+          <article>
+            <h2>Level Ramp</h2>
+            <p>
+              Every 10 cleared objects bumps the level and nudges the speed up,
+              starting mild and getting sharper over time.
+            </p>
+          </article>
+        </div>
+
+        <button id="restartButton" class="cta" type="button">
+          Restart Run
+        </button>
+      </section>
+
+      <section class="game-panel" aria-label="Game panel">
+        <div class="hud-strip">
+          <div class="hud-card">
+            <span>Score</span>
+            <strong id="scoreValue">0</strong>
+          </div>
+          <div class="hud-card">
+            <span>Level</span>
+            <strong id="levelValue">1</strong>
+          </div>
+          <div class="hud-card">
+            <span>Best</span>
+            <strong id="bestValue">0</strong>
+          </div>
+          <div class="hud-card">
+            <span>Status</span>
+            <strong id="stateValue">Ready</strong>
+          </div>
+        </div>
+
+        <div class="canvas-shell">
+          <canvas
+            id="gameCanvas"
+            width="960"
+            height="540"
+            aria-label="Flappy Postman game"
+          ></canvas>
+
+          <div id="overlay" class="overlay">
+            <p class="overlay-kicker">Suburban panic sprint</p>
+            <h2 id="overlayTitle">Flappy Postman</h2>
+            <p id="overlayMessage">
+              Tap the screen or press Up to start. Jump the pavement clutter and keep the route alive.
+            </p>
+          </div>
+        </div>
+
+        <p class="controls-note">
+          Controls: <strong>Tap</strong> or <strong>Up Arrow</strong> to jump. Use
+          <strong>Space</strong>, <strong>Enter</strong>, or the button to
+          restart a run.
+        </p>
+      </section>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
