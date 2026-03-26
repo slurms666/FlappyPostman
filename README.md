@@ -5,9 +5,10 @@ Small static browser game prototype.
 ## Concept
 
 - Side-on endless runner with an auto-scrolling street.
-- One-button jump mechanic.
+- One-button jump mechanic with a short hold-to-jump-higher window.
 - Random pavement obstacles including dogs, prams, post boxes, cats, holly bushes, and street furniture.
 - Level increases every 10 cleared obstacles and the run speed ramps up slightly.
+- Portrait-first play area tuned for phones.
 
 ## Run
 
@@ -15,5 +16,6 @@ Open [index.html](./index.html) in a browser.
 
 ## Controls
 
-- `Up Arrow`: jump
+- `Tap` / `Up Arrow`: jump
+- Hold very briefly to stretch the jump slightly
 - `Space` / `Enter`: restart

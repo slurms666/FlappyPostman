@@ -13,17 +13,23 @@ const restartButton = document.getElementById("restartButton");
 const WIDTH = canvas.width;
 const HEIGHT = canvas.height;
 const TAU = Math.PI * 2;
-const GROUND_Y = 392;
-const PAVEMENT_TOP = 392;
-const CURB_TOP = 426;
-const ROAD_TOP = 444;
+const GROUND_Y = 688;
+const PAVEMENT_TOP = 688;
+const CURB_TOP = 748;
+const ROAD_TOP = 790;
 const BEST_SCORE_KEY = "flappy-postman-runner-best";
-const BASE_SPEED = 250;
-const SPEED_STEP = 26;
-const MAX_SPEED = 432;
+const BASE_SPEED = 210;
+const SPEED_STEP = 18;
+const MAX_SPEED = 340;
 const JUMP_VELOCITY = -700;
 const GRAVITY = 1900;
+const JUMP_HOLD_GRAVITY = 860;
+const JUMP_HOLD_WINDOW = 0.1;
 const TOTAL_JUMP_TIME = (2 * Math.abs(JUMP_VELOCITY)) / GRAVITY;
+
+const inputState = {
+  jumpHeld: false,
+};
 
 const obstacleCatalog = [
   {
@@ -92,7 +98,7 @@ const game = {
   level: 1,
   best: readBestScore(),
   speed: BASE_SPEED,
-  spawnTimer: 1.25,
+  spawnTimer: 1.4,
   obstacles: [],
   particles: [],
   levelBanner: 0,
@@ -123,13 +129,14 @@ function writeBestScore(value) {
 
 function createPlayer() {
   return {
-    x: 182,
+    x: 102,
     y: GROUND_Y,
     vy: 0,
     width: 36,
     height: 78,
     grounded: true,
     jumpBuffer: 0,
+    jumpHoldTime: 0,
     coyoteTimer: 0,
     stepTime: 0,
     tilt: 0,
@@ -174,7 +181,7 @@ function resetGame(nextState = "ready") {
   if (game.state === "ready") {
     setOverlay(
       "Flappy Postman",
-      "Tap the screen or press Up to start. Jump dogs, prams, post boxes, cats, holly bushes, and whatever else the street throws at you.",
+      "Tap the screen or press Up to start. Hold for a beat to squeeze a slightly taller jump out of the postman.",
       true,
     );
   } else {
@@ -208,6 +215,15 @@ function queueJump() {
   player.jumpBuffer = 0.12;
 }
 
+function beginJumpInput() {
+  inputState.jumpHeld = true;
+  queueJump();
+}
+
+function endJumpInput() {
+  inputState.jumpHeld = false;
+}
+
 function restartRun() {
   resetGame("running");
 }
@@ -229,7 +245,7 @@ function crash(label) {
 
   setOverlay(
     "Route Wrecked",
-    `You hit ${label}. Score ${game.score}. Tap or press Up to try again, or use Space, Enter, or the button to restart.`,
+    `You hit ${label}. Score ${game.score}. Tap or press Up to try again. Hold briefly for a slightly higher jump next run.`,
     true,
   );
   syncHud();
@@ -275,8 +291,8 @@ function randomRange(min, max) {
 
 function scheduleNextObstacle() {
   const jumpCover = game.speed * TOTAL_JUMP_TIME;
-  const minGap = Math.max(170, jumpCover * 0.78);
-  const maxGap = Math.max(minGap + 110, 320 + game.level * 16);
+  const minGap = Math.max(170, jumpCover * 0.82);
+  const maxGap = Math.max(minGap + 110, 320 + game.level * 18);
   return randomRange(minGap, maxGap);
 }
 
@@ -288,7 +304,7 @@ function spawnObstacle() {
 
   game.obstacles.push({
     ...template,
-    x: WIDTH + 120,
+    x: WIDTH + 160,
     passed: false,
   });
 
@@ -311,7 +327,7 @@ function scoreObstacle() {
     game.level += 1;
     game.speed = Math.min(MAX_SPEED, BASE_SPEED + (game.level - 1) * SPEED_STEP);
     game.levelBanner = 1.45;
-    emitBurst(WIDTH * 0.52, HEIGHT * 0.24, 20, ["#fff2d1", "#ffd05c", "#ff8c52"], 1.4);
+    emitBurst(WIDTH * 0.52, HEIGHT * 0.2, 20, ["#fff2d1", "#ffd05c", "#ff8c52"], 1.4);
   }
 
   syncHud();
@@ -353,11 +369,18 @@ function updatePlayer(dt) {
     player.vy = JUMP_VELOCITY;
     player.grounded = false;
     player.jumpBuffer = 0;
+    player.jumpHoldTime = JUMP_HOLD_WINDOW;
     player.coyoteTimer = 0;
     emitDust(player.x - 6, GROUND_Y - 4, 8);
   }
 
-  player.vy += GRAVITY * dt;
+  const gravity =
+    inputState.jumpHeld && player.jumpHoldTime > 0 && player.vy < 0
+      ? JUMP_HOLD_GRAVITY
+      : GRAVITY;
+
+  player.jumpHoldTime = Math.max(0, player.jumpHoldTime - dt);
+  player.vy += gravity * dt;
   player.y += player.vy * dt;
   player.tilt = clamp(player.vy / 950, -0.28, 0.38);
 
@@ -368,6 +391,7 @@ function updatePlayer(dt) {
 
     player.y = GROUND_Y;
     player.vy = 0;
+    player.jumpHoldTime = 0;
     player.grounded = true;
   } else {
     player.grounded = false;
@@ -472,7 +496,7 @@ function drawBackground() {
 
   ctx.fillStyle = "rgba(255, 241, 200, 0.85)";
   ctx.beginPath();
-  ctx.arc(784, 92, 48, 0, TAU);
+  ctx.arc(WIDTH - 92, 128, 54, 0, TAU);
   ctx.fill();
 
   drawCloudBand(scroll * 0.08);
@@ -491,20 +515,20 @@ function drawBackground() {
   ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
   for (let x = -120; x < WIDTH + 140; x += 140) {
     const offset = x - wrapOffset(scroll * 0.95, 140);
-    ctx.fillRect(offset, ROAD_TOP + 36, 78, 10);
+    ctx.fillRect(offset, ROAD_TOP + 52, 78, 10);
   }
 
   ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
   for (let x = -140; x < WIDTH + 160; x += 120) {
     const offset = x - wrapOffset(scroll * 1.15, 120);
-    ctx.fillRect(offset, PAVEMENT_TOP + 10, 72, 5);
+    ctx.fillRect(offset, PAVEMENT_TOP + 18, 72, 5);
   }
 }
 
 function drawCloudBand(scroll) {
   for (let index = 0; index < 6; index += 1) {
     const x = index * 190 - wrapOffset(scroll + index * 40, WIDTH + 240) + 120;
-    const y = 70 + (index % 3) * 28;
+    const y = 110 + (index % 3) * 34;
     drawCloud(x, y, 1 + (index % 2) * 0.18);
   }
 }
@@ -571,11 +595,8 @@ function drawFrontGardens(scroll) {
 }
 
 function drawObstacle(obstacle) {
-  const x = obstacle.x;
-  const y = GROUND_Y;
-
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(obstacle.x, GROUND_Y);
 
   switch (obstacle.kind) {
     case "dog":
@@ -815,15 +836,15 @@ function drawLevelBanner() {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = "rgba(26, 30, 36, 0.72)";
-  roundedRect(WIDTH / 2 - 136, 48, 272, 68, 18);
+  roundedRect(WIDTH / 2 - 136, 56, 272, 68, 18);
   ctx.fill();
   ctx.fillStyle = "#ffd05c";
   ctx.font = '16px "Trebuchet MS", sans-serif';
   ctx.textAlign = "center";
-  ctx.fillText("LEVEL UP", WIDTH / 2, 74);
+  ctx.fillText("LEVEL UP", WIDTH / 2, 82);
   ctx.fillStyle = "#fff2d1";
   ctx.font = 'bold 28px Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif';
-  ctx.fillText(`Level ${game.level}`, WIDTH / 2, 100);
+  ctx.fillText(`Level ${game.level}`, WIDTH / 2, 108);
   ctx.restore();
 }
 
@@ -863,7 +884,7 @@ window.addEventListener(
       }
 
       event.preventDefault();
-      queueJump();
+      beginJumpInput();
       return;
     }
 
@@ -873,18 +894,46 @@ window.addEventListener(
       }
 
       event.preventDefault();
+      endJumpInput();
       restartRun();
     }
   },
   { passive: false },
 );
 
+window.addEventListener("keyup", (event) => {
+  if (event.code === "ArrowUp") {
+    endJumpInput();
+  }
+});
+
+window.addEventListener("blur", () => {
+  endJumpInput();
+});
+
 restartButton.addEventListener("click", () => {
+  endJumpInput();
   restartRun();
 });
 
-canvas.addEventListener("pointerdown", () => {
-  queueJump();
+canvas.addEventListener("pointerdown", (event) => {
+  if (canvas.setPointerCapture) {
+    canvas.setPointerCapture(event.pointerId);
+  }
+
+  beginJumpInput();
+});
+
+canvas.addEventListener("pointerup", () => {
+  endJumpInput();
+});
+
+canvas.addEventListener("pointercancel", () => {
+  endJumpInput();
+});
+
+canvas.addEventListener("lostpointercapture", () => {
+  endJumpInput();
 });
 
 resetGame("ready");
