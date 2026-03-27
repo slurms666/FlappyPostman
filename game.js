@@ -21,10 +21,14 @@ const BEST_SCORE_KEY = "flappy-postman-runner-best";
 const BASE_SPEED = 210;
 const SPEED_STEP = 18;
 const MAX_SPEED = 340;
-const JUMP_VELOCITY = -700;
+const JUMP_VELOCITY = -780;
 const GRAVITY = 1900;
-const JUMP_HOLD_GRAVITY = 860;
-const JUMP_HOLD_WINDOW = 0.1;
+const JUMP_HOLD_GRAVITY = 320;
+const JUMP_HOLD_WINDOW = 0.16;
+const DOUBLE_JUMP_VELOCITY = -1060;
+const BUS_MIN_SCORE = 8;
+const BUS_CHANCE = 0.08;
+const BUS_COOLDOWN_OBSTACLES = 7;
 const TOTAL_JUMP_TIME = (2 * Math.abs(JUMP_VELOCITY)) / GRAVITY;
 
 const inputState = {
@@ -88,6 +92,13 @@ const obstacleCatalog = [
     height: 36,
     hitbox: { left: 4, right: 4, top: 6, bottom: 2 },
   },
+  {
+    kind: "bus",
+    label: "a bus",
+    width: 174,
+    height: 118,
+    hitbox: { left: 10, right: 10, top: 10, bottom: 8 },
+  },
 ];
 
 const game = {
@@ -105,6 +116,7 @@ const game = {
   cameraShake: 0,
   crashLabel: "a badly parked pram",
   lastObstacleKind: "",
+  obstaclesSinceBus: BUS_COOLDOWN_OBSTACLES,
 };
 
 let player = createPlayer();
@@ -137,6 +149,7 @@ function createPlayer() {
     grounded: true,
     jumpBuffer: 0,
     jumpHoldTime: 0,
+    doubleJumpAvailable: false,
     coyoteTimer: 0,
     stepTime: 0,
     tilt: 0,
@@ -175,13 +188,14 @@ function resetGame(nextState = "ready") {
   game.cameraShake = 0;
   game.crashLabel = "a badly parked pram";
   game.lastObstacleKind = "";
+  game.obstaclesSinceBus = BUS_COOLDOWN_OBSTACLES;
   player = createPlayer();
   game.spawnTimer = (scheduleNextObstacle() + 120) / game.speed;
 
   if (game.state === "ready") {
     setOverlay(
       "Flappy Postman",
-      "Tap the screen or press Up to start. Hold for a beat to squeeze a slightly taller jump out of the postman.",
+      "Tap the screen or press Up to start. Hold briefly for extra lift, then tap again at any point in the air for the bus-clearing second jump.",
       true,
     );
   } else {
@@ -217,6 +231,15 @@ function queueJump() {
 
 function beginJumpInput() {
   inputState.jumpHeld = true;
+
+  if (game.state === "running" && !player.grounded && player.coyoteTimer <= 0) {
+    if (player.doubleJumpAvailable) {
+      tryDoubleJump();
+    }
+
+    return;
+  }
+
   queueJump();
 }
 
@@ -226,6 +249,25 @@ function endJumpInput() {
 
 function restartRun() {
   resetGame("running");
+}
+
+function tryDoubleJump() {
+  if (game.state !== "running") {
+    return false;
+  }
+
+  if (player.grounded || !player.doubleJumpAvailable) {
+    return false;
+  }
+
+  player.doubleJumpAvailable = false;
+  player.jumpBuffer = 0;
+  player.jumpHoldTime = JUMP_HOLD_WINDOW;
+  player.vy = DOUBLE_JUMP_VELOCITY;
+  game.cameraShake = Math.max(game.cameraShake, 6);
+  emitBurst(player.x + 8, player.y - 42, 12, ["#fff2d1", "#9fd4f3", "#ff6d52"], 0.95);
+  emitDust(player.x - 4, player.y - 2, 6);
+  return true;
 }
 
 function crash(label) {
@@ -245,7 +287,7 @@ function crash(label) {
 
   setOverlay(
     "Route Wrecked",
-    `You hit ${label}. Score ${game.score}. Tap or press Up to try again. Hold briefly for a slightly higher jump next run.`,
+    `You hit ${label}. Score ${game.score}. Tap or press Up to try again, and use the airborne second jump when a bus turns up.`,
     true,
   );
   syncHud();
@@ -289,26 +331,48 @@ function randomRange(min, max) {
   return min + Math.random() * (max - min);
 }
 
-function scheduleNextObstacle() {
+function scheduleNextObstacle(template = null) {
   const jumpCover = game.speed * TOTAL_JUMP_TIME;
-  const minGap = Math.max(170, jumpCover * 0.82);
+  let minGap = Math.max(170, jumpCover * 0.82);
+
+  if (template) {
+    minGap += template.width * 0.18;
+
+    if (template.kind === "bus") {
+      minGap += game.speed * 0.9;
+    }
+  }
+
   const maxGap = Math.max(minGap + 110, 320 + game.level * 18);
   return randomRange(minGap, maxGap);
 }
 
 function spawnObstacle() {
+  const busEligible =
+    game.score >= BUS_MIN_SCORE &&
+    game.obstaclesSinceBus >= BUS_COOLDOWN_OBSTACLES &&
+    Math.random() < BUS_CHANCE;
+
   const options = obstacleCatalog.filter(
-    (entry) => entry.kind !== game.lastObstacleKind || Math.random() > 0.6,
+    (entry) =>
+      (busEligible ? entry.kind === "bus" : entry.kind !== "bus") &&
+      (entry.kind !== game.lastObstacleKind || Math.random() > 0.6),
   );
   const template = options[Math.floor(Math.random() * options.length)];
+  const previousObstacle = game.obstacles[game.obstacles.length - 1];
+  const leadGap = scheduleNextObstacle(template);
+  const spawnX = previousObstacle
+    ? Math.max(WIDTH + 160, previousObstacle.x + previousObstacle.width + leadGap)
+    : WIDTH + 160;
 
   game.obstacles.push({
     ...template,
-    x: WIDTH + 160,
+    x: spawnX,
     passed: false,
   });
 
   game.lastObstacleKind = template.kind;
+  game.obstaclesSinceBus = template.kind === "bus" ? 0 : game.obstaclesSinceBus + 1;
   const nextGap = scheduleNextObstacle();
   game.spawnTimer = (template.width + nextGap) / game.speed;
 }
@@ -370,6 +434,7 @@ function updatePlayer(dt) {
     player.grounded = false;
     player.jumpBuffer = 0;
     player.jumpHoldTime = JUMP_HOLD_WINDOW;
+    player.doubleJumpAvailable = true;
     player.coyoteTimer = 0;
     emitDust(player.x - 6, GROUND_Y - 4, 8);
   }
@@ -392,6 +457,7 @@ function updatePlayer(dt) {
     player.y = GROUND_Y;
     player.vy = 0;
     player.jumpHoldTime = 0;
+    player.doubleJumpAvailable = false;
     player.grounded = true;
   } else {
     player.grounded = false;
@@ -623,6 +689,9 @@ function drawObstacle(obstacle) {
     case "bench":
       drawBench();
       break;
+    case "bus":
+      drawBus();
+      break;
     default:
       break;
   }
@@ -743,6 +812,39 @@ function drawBench() {
   ctx.fillRect(42, -12, 6, 12);
 }
 
+function drawBus() {
+  ctx.fillStyle = "#c62c29";
+  roundedRect(4, -108, 154, 92, 12);
+  ctx.fill();
+
+  ctx.fillStyle = "#8e1717";
+  roundedRect(118, -96, 28, 80, 8);
+  ctx.fill();
+
+  ctx.fillStyle = "#f5e8bf";
+  for (let index = 0; index < 5; index += 1) {
+    ctx.fillRect(16 + index * 24, -92, 18, 22);
+    ctx.fillRect(16 + index * 24, -64, 18, 22);
+  }
+
+  ctx.fillRect(124, -88, 16, 54);
+
+  ctx.fillStyle = "#f1c94a";
+  ctx.fillRect(18, -34, 42, 10);
+
+  ctx.fillStyle = "#1f2024";
+  ctx.beginPath();
+  ctx.arc(36, -10, 12, 0, TAU);
+  ctx.arc(126, -10, 12, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = "#9aa2ae";
+  ctx.beginPath();
+  ctx.arc(36, -10, 5, 0, TAU);
+  ctx.arc(126, -10, 5, 0, TAU);
+  ctx.fill();
+}
+
 function drawObstacles() {
   for (const obstacle of game.obstacles) {
     drawObstacle(obstacle);
@@ -751,15 +853,35 @@ function drawObstacles() {
 
 function drawPlayer() {
   const runSwing = Math.sin(player.stepTime);
+  const shirtColor = "#9fd4f3";
+  const capColor = "#17375b";
+  const bagColor = "#c63c33";
+  const skinColor = "#f1ceb4";
+  const altitude = Math.max(0, GROUND_Y - player.y);
+  const shadowFade = clamp(1 - altitude / 210, 0, 1);
+  const shadowWidth = 24 - (1 - shadowFade) * 15;
+  const shadowHeight = 7 - (1 - shadowFade) * 5;
+
+  if (shadowFade > 0.02) {
+    ctx.save();
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.22 * shadowFade})`;
+    ctx.beginPath();
+    ctx.ellipse(
+      player.x,
+      GROUND_Y + 4,
+      Math.max(6, shadowWidth),
+      Math.max(1.5, shadowHeight),
+      0,
+      0,
+      TAU,
+    );
+    ctx.fill();
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.translate(player.x, player.y);
   ctx.rotate(player.tilt);
-
-  ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
-  ctx.beginPath();
-  ctx.ellipse(0, 4, 24, 7, 0, 0, TAU);
-  ctx.fill();
 
   ctx.strokeStyle = "#352319";
   ctx.lineWidth = 5;
@@ -788,21 +910,36 @@ function drawPlayer() {
 
   ctx.stroke();
 
-  ctx.fillStyle = "#214e8a";
+  ctx.fillStyle = shirtColor;
   roundedRect(-16, -50, 32, 32, 10);
   ctx.fill();
 
-  ctx.fillStyle = "#cf7f21";
+  ctx.fillStyle = shirtColor;
+  roundedRect(-20, -48, 10, 12, 5);
+  ctx.fill();
+  roundedRect(10, -48, 10, 12, 5);
+  ctx.fill();
+
+  ctx.fillStyle = bagColor;
   roundedRect(2, -44, 20, 20, 6);
   ctx.fill();
 
-  ctx.fillStyle = "#f1ceb4";
+  ctx.strokeStyle = "#8f2420";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(8, -47);
+  ctx.lineTo(-4, -20);
+  ctx.stroke();
+
+  ctx.fillStyle = skinColor;
   ctx.beginPath();
   ctx.arc(0, -64, 12, 0, TAU);
   ctx.fill();
 
-  ctx.fillStyle = "#c8392d";
-  roundedRect(-14, -78, 26, 10, 6);
+  ctx.fillStyle = capColor;
+  roundedRect(-14, -78, 24, 10, 6);
+  ctx.fill();
+  roundedRect(6, -75, 12, 4, 2);
   ctx.fill();
 
   ctx.fillStyle = "#efe8d8";
