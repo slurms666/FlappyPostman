@@ -20,6 +20,7 @@ const PAVEMENT_TOP = 688;
 const CURB_TOP = 748;
 const ROAD_TOP = 790;
 const BEST_SCORE_KEY = "flappy-postman-runner-best";
+const PDA_SOUND_SRC = "assets/audio/pda-found.m4a";
 const BASE_SPEED = 210;
 const SPEED_STEP = 18;
 const MAX_SPEED = 340;
@@ -31,10 +32,31 @@ const DOUBLE_JUMP_VELOCITY = -1060;
 const BUS_MIN_SCORE = 8;
 const BUS_CHANCE = 0.08;
 const BUS_COOLDOWN_OBSTACLES = 7;
+const COIN_CHANCE = 0.68;
+const COIN_RADIUS = 14;
+const COIN_EDGE_MARGIN = 64;
+const COIN_SPACING = 42;
+const COIN_MIN_HEIGHT = 96;
+const COIN_MAX_HEIGHT = 232;
+const COIN_HIGH_HEIGHT = 286;
+const PDA_CHANCE = 0.16;
+const PDA_COOLDOWN_GAPS = 5;
+const PDA_WIDTH = 28;
+const PDA_HEIGHT = 38;
+const PDA_MIN_HEIGHT = 114;
+const PDA_MAX_HEIGHT = 248;
+const PDA_HIGH_HEIGHT = 302;
 const TOTAL_JUMP_TIME = (2 * Math.abs(JUMP_VELOCITY)) / GRAVITY;
 
 const inputState = {
   jumpHeld: false,
+};
+
+const audioState = {
+  context: null,
+  masterGain: null,
+  pdaSound: null,
+  pdaUnlocked: false,
 };
 
 const obstacleCatalog = [
@@ -113,12 +135,16 @@ const game = {
   speed: BASE_SPEED,
   spawnTimer: 1.4,
   obstacles: [],
+  coins: [],
+  coinScore: 0,
+  pdaScore: 0,
   particles: [],
   levelBanner: 0,
   cameraShake: 0,
   crashLabel: "a badly parked pram",
   lastObstacleKind: "",
   obstaclesSinceBus: BUS_COOLDOWN_OBSTACLES,
+  gapsSincePda: PDA_COOLDOWN_GAPS,
 };
 
 let player = createPlayer();
@@ -138,6 +164,121 @@ function writeBestScore(value) {
     window.localStorage.setItem(BEST_SCORE_KEY, String(value));
   } catch (error) {
     return;
+  }
+}
+
+function ensureAudioContext() {
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+
+  if (!AudioContextConstructor) {
+    return null;
+  }
+
+  if (!audioState.context) {
+    const context = new AudioContextConstructor();
+    const masterGain = context.createGain();
+    masterGain.gain.value = 0.22;
+    masterGain.connect(context.destination);
+    audioState.context = context;
+    audioState.masterGain = masterGain;
+  }
+
+  if (audioState.context.state === "suspended") {
+    audioState.context.resume().catch(() => {});
+  }
+
+  return audioState.context;
+}
+
+function playCoinChime() {
+  const context = ensureAudioContext();
+
+  if (!context || !audioState.masterGain || context.state !== "running") {
+    return;
+  }
+
+  const start = context.currentTime;
+  const partials = [
+    { frequency: 1318.51, gain: 0.07, delay: 0, duration: 0.11, type: "triangle" },
+    { frequency: 1760, gain: 0.045, delay: 0.04, duration: 0.09, type: "sine" },
+  ];
+
+  for (const partial of partials) {
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    const noteStart = start + partial.delay;
+    const noteEnd = noteStart + partial.duration;
+
+    oscillator.type = partial.type;
+    oscillator.frequency.setValueAtTime(partial.frequency, noteStart);
+    oscillator.frequency.exponentialRampToValueAtTime(partial.frequency * 1.06, noteEnd);
+
+    gainNode.gain.setValueAtTime(0.0001, noteStart);
+    gainNode.gain.exponentialRampToValueAtTime(partial.gain, noteStart + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioState.masterGain);
+    oscillator.start(noteStart);
+    oscillator.stop(noteEnd + 0.02);
+  }
+}
+
+function ensurePdaSound() {
+  if (!audioState.pdaSound) {
+    const sound = new Audio(PDA_SOUND_SRC);
+    sound.preload = "auto";
+    audioState.pdaSound = sound;
+  }
+
+  return audioState.pdaSound;
+}
+
+function primePdaSound() {
+  const sound = ensurePdaSound();
+
+  if (!sound || audioState.pdaUnlocked) {
+    return;
+  }
+
+  const originalMuted = sound.muted;
+  sound.muted = true;
+  const playAttempt = sound.play();
+
+  if (!playAttempt || typeof playAttempt.then !== "function") {
+    sound.pause();
+    sound.currentTime = 0;
+    sound.muted = originalMuted;
+    audioState.pdaUnlocked = true;
+    return;
+  }
+
+  playAttempt
+    .then(() => {
+      sound.pause();
+      sound.currentTime = 0;
+      sound.muted = originalMuted;
+      audioState.pdaUnlocked = true;
+    })
+    .catch(() => {
+      sound.muted = originalMuted;
+    });
+}
+
+function playPdaFoundSound() {
+  const baseSound = ensurePdaSound();
+
+  if (!baseSound) {
+    return;
+  }
+
+  const sound = baseSound.paused ? baseSound : new Audio(PDA_SOUND_SRC);
+  sound.currentTime = 0;
+  sound.volume = 0.92;
+  const playAttempt = sound.play();
+
+  if (playAttempt && typeof playAttempt.catch === "function") {
+    playAttempt.catch(() => {});
   }
 }
 
@@ -183,19 +324,23 @@ function resetGame(nextState = "ready") {
   game.speed = BASE_SPEED;
   game.spawnTimer = 1.4;
   game.obstacles = [];
+  game.coins = [];
+  game.coinScore = 0;
+  game.pdaScore = 0;
   game.particles = [];
   game.levelBanner = 0;
   game.cameraShake = 0;
   game.crashLabel = "a badly parked pram";
   game.lastObstacleKind = "";
   game.obstaclesSinceBus = BUS_COOLDOWN_OBSTACLES;
+  game.gapsSincePda = PDA_COOLDOWN_GAPS;
   player = createPlayer();
   game.spawnTimer = (scheduleNextObstacle() + 120) / game.speed;
 
   if (game.state === "ready") {
     setOverlay(
       "Flappy Postman",
-      "Tap the screen or press Up to start. Hold briefly for extra lift, then tap again at any point in the air for the bus-clearing second jump.",
+      "Tap the screen or press Up to start. Carl needs to recover his lost PDAs, which appear rarely instead of coins. Hold briefly for extra lift, then tap again midair for the bus-clearing second jump.",
       true,
     );
   } else {
@@ -230,6 +375,8 @@ function queueJump() {
 }
 
 function beginJumpInput() {
+  ensureAudioContext();
+  primePdaSound();
   inputState.jumpHeld = true;
 
   if (game.state === "running" && !player.grounded && player.coyoteTimer <= 0) {
@@ -287,7 +434,7 @@ function crash(label) {
 
   setOverlay(
     "Route Wrecked",
-    `You hit ${label}. Score ${game.score}. Tap or press Up to try again, and use the airborne second jump when a bus turns up.`,
+    `You hit ${label}. Score ${game.score}. Coins ${game.coinScore}. PDAs ${game.pdaScore}. Tap or press Up to try again, and use the airborne second jump when a bus turns up.`,
     true,
   );
   syncHud();
@@ -347,6 +494,100 @@ function scheduleNextObstacle(template = null) {
   return randomRange(minGap, maxGap);
 }
 
+function pickCoinOffsets(count) {
+  const patterns =
+    count === 1
+      ? [[0], [14], [-14]]
+      : count === 2
+        ? [
+            [-12, 10],
+            [10, -12],
+            [0, -16],
+          ]
+        : [
+            [0, -18, 0],
+            [-18, 0, 18],
+            [18, 0, -18],
+            [-8, -22, -8],
+          ];
+
+  return patterns[Math.floor(Math.random() * patterns.length)];
+}
+
+function spawnCoinsBetween(previousObstacle, obstacle) {
+  if (!previousObstacle) {
+    return;
+  }
+
+  if (Math.random() > COIN_CHANCE) {
+    game.gapsSincePda += 1;
+    return;
+  }
+
+  const laneStart = previousObstacle.x + previousObstacle.width + COIN_EDGE_MARGIN;
+  const laneEnd = obstacle.x - COIN_EDGE_MARGIN;
+  const laneWidth = laneEnd - laneStart;
+
+  if (laneWidth < COIN_RADIUS * 5) {
+    game.gapsSincePda += 1;
+    return;
+  }
+
+  const baseHeightLimit =
+    obstacle.kind === "bus" || previousObstacle.kind === "bus" ? COIN_HIGH_HEIGHT : COIN_MAX_HEIGHT;
+  const pdaEligible = game.gapsSincePda >= PDA_COOLDOWN_GAPS && Math.random() < PDA_CHANCE;
+
+  if (pdaEligible) {
+    const pdaHeightLimit = Math.min(PDA_HIGH_HEIGHT, baseHeightLimit + 26);
+    game.coins.push({
+      kind: "pda",
+      x: laneStart + laneWidth / 2,
+      y: GROUND_Y - randomRange(PDA_MIN_HEIGHT, pdaHeightLimit),
+      width: PDA_WIDTH,
+      height: PDA_HEIGHT,
+      phase: Math.random() * TAU,
+    });
+    game.gapsSincePda = 0;
+    return;
+  }
+
+  const maxCoins = Math.min(3, Math.floor((laneWidth + COIN_SPACING * 0.35) / COIN_SPACING));
+
+  if (maxCoins <= 0) {
+    game.gapsSincePda += 1;
+    return;
+  }
+
+  let coinCount = 1;
+
+  if (maxCoins >= 2 && Math.random() < 0.72) {
+    coinCount = 2;
+  }
+
+  if (maxCoins >= 3 && Math.random() < 0.46) {
+    coinCount = 3;
+  }
+
+  const spacing = coinCount > 1 ? Math.min(COIN_SPACING, laneWidth / (coinCount - 1 + 0.6)) : 0;
+  const totalSpan = coinCount > 1 ? spacing * (coinCount - 1) : 0;
+  const startX = laneStart + Math.max(0, (laneWidth - totalSpan) / 2);
+  const baseHeight = randomRange(COIN_MIN_HEIGHT, baseHeightLimit);
+  const offsets = pickCoinOffsets(coinCount);
+
+  for (let index = 0; index < coinCount; index += 1) {
+    const airHeight = clamp(baseHeight + offsets[index], COIN_MIN_HEIGHT, baseHeightLimit);
+    game.coins.push({
+      kind: "coin",
+      x: startX + spacing * index,
+      y: GROUND_Y - airHeight,
+      radius: COIN_RADIUS,
+      phase: Math.random() * TAU,
+    });
+  }
+
+  game.gapsSincePda += 1;
+}
+
 function spawnObstacle() {
   const busEligible =
     game.score >= BUS_MIN_SCORE &&
@@ -370,6 +611,8 @@ function spawnObstacle() {
     x: spawnX,
     passed: false,
   });
+
+  spawnCoinsBetween(previousObstacle, game.obstacles[game.obstacles.length - 1]);
 
   game.lastObstacleKind = template.kind;
   game.obstaclesSinceBus = template.kind === "bus" ? 0 : game.obstaclesSinceBus + 1;
@@ -395,6 +638,24 @@ function scoreObstacle() {
   }
 
   syncHud();
+}
+
+function coinBounds(coin) {
+  if (coin.kind === "pda") {
+    return {
+      left: coin.x - coin.width / 2 + 2,
+      right: coin.x + coin.width / 2 - 2,
+      top: coin.y - coin.height / 2 + 2,
+      bottom: coin.y + coin.height / 2 - 2,
+    };
+  }
+
+  return {
+    left: coin.x - coin.radius + 2,
+    right: coin.x + coin.radius - 2,
+    top: coin.y - coin.radius + 2,
+    bottom: coin.y + coin.radius - 2,
+  };
 }
 
 function playerBounds() {
@@ -496,6 +757,40 @@ function updateObstacles(dt) {
   }
 }
 
+function collectCoin(coin) {
+  if (coin.kind === "pda") {
+    game.pdaScore += 1;
+    playPdaFoundSound();
+    game.cameraShake = Math.max(game.cameraShake, 4);
+    emitBurst(coin.x, coin.y, 14, ["#d7f2ff", "#92d8ff", "#ff6d52"], 0.92);
+    return;
+  }
+
+  game.coinScore += 1;
+  playCoinChime();
+  emitBurst(coin.x, coin.y, 9, ["#fff4bf", "#ffd95c", "#ffb347"], 0.78);
+}
+
+function updateCoins(dt) {
+  const playerHitbox = playerBounds();
+
+  for (let index = game.coins.length - 1; index >= 0; index -= 1) {
+    const coin = game.coins[index];
+    const trailingEdge = coin.kind === "pda" ? coin.width / 2 : coin.radius;
+    coin.x -= game.speed * dt;
+
+    if (intersects(playerHitbox, coinBounds(coin))) {
+      collectCoin(coin);
+      game.coins.splice(index, 1);
+      continue;
+    }
+
+    if (coin.x + trailingEdge < -80) {
+      game.coins.splice(index, 1);
+    }
+  }
+}
+
 function updateParticles(dt) {
   for (let index = game.particles.length - 1; index >= 0; index -= 1) {
     const particle = game.particles[index];
@@ -520,6 +815,10 @@ function update(dt) {
   if (game.state === "running") {
     updatePlayer(dt);
     updateObstacles(dt);
+
+    if (game.state === "running") {
+      updateCoins(dt);
+    }
   } else if (game.state === "ready") {
     player.stepTime += dt * 4.5;
     player.y = GROUND_Y + Math.sin(game.time * 2.4) * 2.5;
@@ -845,6 +1144,102 @@ function drawBus() {
   ctx.fill();
 }
 
+function drawCoinGlyph(radius) {
+  ctx.fillStyle = "#ffd447";
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = "#fff2b8";
+  ctx.beginPath();
+  ctx.arc(-radius * 0.1, -radius * 0.1, radius * 0.62, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = "#d38d1f";
+  ctx.lineWidth = Math.max(2, radius * 0.22);
+  ctx.beginPath();
+  ctx.arc(0, 0, radius - 1.5, 0, TAU);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+  ctx.beginPath();
+  ctx.arc(-radius * 0.34, -radius * 0.32, radius * 0.2, 0, TAU);
+  ctx.fill();
+}
+
+function drawPdaGlyph(scale = 1) {
+  ctx.save();
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = "#22384c";
+  roundedRect(-14, -18, 28, 36, 6);
+  ctx.fill();
+
+  ctx.fillStyle = "#365d78";
+  roundedRect(-11, -15, 22, 20, 4);
+  ctx.fill();
+
+  const screenGlow = ctx.createLinearGradient(-10, -14, 10, 5);
+  screenGlow.addColorStop(0, "#d9f6ff");
+  screenGlow.addColorStop(1, "#7bc5ef");
+  ctx.fillStyle = screenGlow;
+  roundedRect(-9, -13, 18, 16, 3);
+  ctx.fill();
+
+  ctx.fillStyle = "#ff6d52";
+  ctx.beginPath();
+  ctx.arc(0, 11, 2.3, 0, TAU);
+  ctx.arc(-6, 11, 1.6, 0, TAU);
+  ctx.arc(6, 11, 1.6, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = "#9edfff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(10, -13);
+  ctx.lineTo(16, -20);
+  ctx.stroke();
+
+  ctx.fillStyle = "#9edfff";
+  ctx.beginPath();
+  ctx.arc(16, -20, 1.6, 0, TAU);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawCoin(coin) {
+  const bob = Math.sin(game.time * 6.5 + coin.phase) * 2.4;
+  const shimmer = 0.78 + Math.abs(Math.sin(game.time * 10 + coin.phase)) * 0.22;
+
+  ctx.save();
+  ctx.translate(coin.x, coin.y + bob);
+  ctx.scale(shimmer, 1);
+  drawCoinGlyph(coin.radius);
+  ctx.restore();
+}
+
+function drawPda(coin) {
+  const bob = Math.sin(game.time * 5.4 + coin.phase) * 2.6;
+  const wobble = Math.sin(game.time * 4.1 + coin.phase) * 0.08;
+
+  ctx.save();
+  ctx.translate(coin.x, coin.y + bob);
+  ctx.rotate(wobble);
+  drawPdaGlyph();
+  ctx.restore();
+}
+
+function drawCoins() {
+  for (const coin of game.coins) {
+    if (coin.kind === "pda") {
+      drawPda(coin);
+    } else {
+      drawCoin(coin);
+    }
+  }
+}
+
 function drawObstacles() {
   for (const obstacle of game.obstacles) {
     drawObstacle(obstacle);
@@ -964,6 +1359,54 @@ function drawParticles() {
   }
 }
 
+function drawCollectibleCounter() {
+  const coinLabel = `Coins ${game.coinScore}`;
+  const pdaLabel = `PDAs ${game.pdaScore}`;
+
+  ctx.save();
+  ctx.font = 'bold 16px "Trebuchet MS", sans-serif';
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+
+  const coinWidth = ctx.measureText(coinLabel).width;
+  const pdaWidth = ctx.measureText(pdaLabel).width;
+  const boxWidth = coinWidth + pdaWidth + 126;
+  const x = WIDTH - boxWidth - 18;
+  const y = 20;
+
+  ctx.fillStyle = "rgba(18, 21, 28, 0.58)";
+  roundedRect(x, y, boxWidth, 36, 18);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.lineWidth = 1;
+  roundedRect(x, y, boxWidth, 36, 18);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.translate(x + 20, y + 18);
+  drawCoinGlyph(9);
+  ctx.restore();
+
+  ctx.fillStyle = "#fff4d9";
+  ctx.fillText(coinLabel, x + 36, y + 19);
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+  ctx.beginPath();
+  ctx.moveTo(x + 66 + coinWidth, y + 8);
+  ctx.lineTo(x + 66 + coinWidth, y + 28);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.translate(x + 90 + coinWidth, y + 18);
+  drawPdaGlyph(0.56);
+  ctx.restore();
+
+  ctx.fillStyle = "#dff6ff";
+  ctx.fillText(pdaLabel, x + 106 + coinWidth, y + 19);
+  ctx.restore();
+}
+
 function drawLevelBanner() {
   if (game.levelBanner <= 0) {
     return;
@@ -997,8 +1440,10 @@ function drawScene() {
 
   drawBackground();
   drawObstacles();
+  drawCoins();
   drawParticles();
   drawPlayer();
+  drawCollectibleCounter();
   drawLevelBanner();
 
   ctx.restore();

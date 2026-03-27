@@ -171,6 +171,18 @@ h1 {
   justify-self: center;
 }
 
+.objective-note {
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  font-size: 0.84rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .hud-strip {
   display: block;
   margin-bottom: 14px;
@@ -372,8 +384,18 @@ h1 {
     backdrop-filter: none;
   }
 
+  .objective-note {
+    margin-bottom: 6px;
+    padding: 7px 10px;
+    border-radius: 14px;
+    background: rgba(10, 14, 18, 0.44);
+    font-size: 0.72rem;
+    line-height: 1.22;
+    backdrop-filter: blur(10px);
+  }
+
   .hud-strip {
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
 
   .hud-bar {
@@ -403,7 +425,7 @@ h1 {
   }
 
   .canvas-shell {
-    width: min(100%, calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 82px) * 9 / 16));
+    width: min(100%, calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 122px) * 9 / 16));
     max-width: 100%;
     margin: 0 auto;
     border-radius: 18px;
