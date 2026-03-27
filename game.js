@@ -6,6 +6,7 @@ const scoreValue = document.getElementById("scoreValue");
 const levelValue = document.getElementById("levelValue");
 const bestValue = document.getElementById("bestValue");
 const stateValue = document.getElementById("stateValue");
+const statusIndicator = document.getElementById("statusIndicator");
 const overlay = document.getElementById("overlay");
 const overlayTitle = document.getElementById("overlayTitle");
 const overlayMessage = document.getElementById("overlayMessage");
@@ -164,15 +165,13 @@ function setOverlay(title, message, visible) {
 }
 
 function syncHud() {
+  const isRunning = game.state === "running";
   scoreValue.textContent = String(game.score);
   levelValue.textContent = String(game.level);
   bestValue.textContent = String(game.best);
-  stateValue.textContent =
-    game.state === "running"
-      ? "Running"
-      : game.state === "gameover"
-        ? "Crashed"
-        : "Ready";
+  stateValue.textContent = isRunning ? "Running" : "Stopped";
+  statusIndicator.classList.toggle("is-running", isRunning);
+  statusIndicator.classList.toggle("is-stopped", !isRunning);
 }
 
 function resetGame(nextState = "ready") {

@@ -172,30 +172,76 @@ h1 {
 }
 
 .hud-strip {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  display: block;
   margin-bottom: 14px;
 }
 
-.hud-card {
-  padding: 14px 16px;
+.hud-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.hud-card span {
-  display: block;
-  margin-bottom: 6px;
+.hud-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hud-label {
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 0.74rem;
+  font-size: 0.62rem;
 }
 
-.hud-card strong {
-  font-size: clamp(1.25rem, 2vw, 1.8rem);
+.hud-item strong {
+  font-size: clamp(0.92rem, 1.8vw, 1.2rem);
+}
+
+.hud-status {
+  margin-left: auto;
+  align-items: center;
+}
+
+.status-indicator {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+}
+
+.status-indicator.is-running {
+  background: #44d26c;
+  box-shadow:
+    0 0 0 2px rgba(68, 210, 108, 0.18),
+    0 0 10px rgba(68, 210, 108, 0.45);
+}
+
+.status-indicator.is-stopped {
+  background: #e25555;
+  box-shadow:
+    0 0 0 2px rgba(226, 85, 85, 0.18),
+    0 0 10px rgba(226, 85, 85, 0.4);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .canvas-shell {
@@ -327,19 +373,37 @@ h1 {
   }
 
   .hud-strip {
-    gap: 8px;
     margin-bottom: 8px;
   }
 
-  .hud-card {
-    padding: 10px 12px;
+  .hud-bar {
+    gap: 8px;
+    padding: 9px 10px;
     border-radius: 14px;
     background: rgba(10, 14, 18, 0.44);
     backdrop-filter: blur(10px);
   }
 
+  .hud-item {
+    gap: 4px;
+  }
+
+  .hud-label {
+    font-size: 0.54rem;
+    letter-spacing: 0.1em;
+  }
+
+  .hud-item strong {
+    font-size: 0.84rem;
+  }
+
+  .status-indicator {
+    width: 9px;
+    height: 9px;
+  }
+
   .canvas-shell {
-    width: min(100%, calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 108px) * 9 / 16));
+    width: min(100%, calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 82px) * 9 / 16));
     max-width: 100%;
     margin: 0 auto;
     border-radius: 18px;
