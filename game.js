@@ -1,4 +1,5 @@
 const canvas = document.getElementById("gameCanvas");
+const canvasShell = document.querySelector(".canvas-shell");
 const ctx = canvas.getContext("2d");
 
 const scoreValue = document.getElementById("scoreValue");
@@ -1053,23 +1054,23 @@ restartButton.addEventListener("click", () => {
   restartRun();
 });
 
-canvas.addEventListener("pointerdown", (event) => {
-  if (canvas.setPointerCapture) {
-    canvas.setPointerCapture(event.pointerId);
+canvasShell.addEventListener("pointerdown", (event) => {
+  if (canvasShell.setPointerCapture) {
+    canvasShell.setPointerCapture(event.pointerId);
   }
 
   beginJumpInput();
 });
 
-canvas.addEventListener("pointerup", () => {
+canvasShell.addEventListener("pointerup", () => {
   endJumpInput();
 });
 
-canvas.addEventListener("pointercancel", () => {
+canvasShell.addEventListener("pointercancel", () => {
   endJumpInput();
 });
 
-canvas.addEventListener("lostpointercapture", () => {
+canvasShell.addEventListener("lostpointercapture", () => {
   endJumpInput();
 });
 
